@@ -1,0 +1,113 @@
+{{- if .Values.aftokServer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aftok.fullname" . }}-server
+  labels:
+    {{- include "aftok.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  {{- if not .Values.aftokServer.autoscaling.enabled }}
+  replicas: {{ .Values.aftokServer.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "aftok.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-aftok.yaml") . | sha256sum }}
+      labels:
+        {{- include "aftok.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: aftok-server
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ if .Values.aftokServer.image.registry }}{{ .Values.aftokServer.image.registry }}/{{ end }}{{ .Values.aftokServer.image.repository }}:{{ .Values.aftokServer.image.tag }}"
+          imagePullPolicy: {{ .Values.aftokServer.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.aftokServer.service.port }}
+              protocol: TCP
+          {{- if .Values.aftokServer.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.aftokServer.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.aftokServer.readinessProbe }}
+          readinessProbe:
+            {{- toYaml .Values.aftokServer.readinessProbe | nindent 12 }}
+          {{- end }}
+          env:
+            - name: POSTGRES_HOST
+              value: {{ include "aftok.postgresql.fullname" . }}
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.auth.database }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.auth.username }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "aftok.postgresql.fullname" . }}
+                  key: password
+            {{- with .Values.aftokServer.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.aftokServer.envSecrets }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.aftokServer.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/aftok
+              readOnly: true
+            - name: logs
+              mountPath: /opt/aftok/log
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: config
+          projected:
+            sources:
+              - configMap:
+                  name: {{ include "aftok.fullname" . }}-config
+                  items:
+                    - key: aftok-server.cfg
+                      path: aftok-server.cfg
+                    - key: aftok-migrations.cfg
+                      path: aftok-migrations.cfg
+              {{- if .Values.aftokServer.secretName }}
+              - secret:
+                  name: {{ .Values.aftokServer.secretName }}
+              {{- end }}
+        - name: logs
+          emptyDir: {}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

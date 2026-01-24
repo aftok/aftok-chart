@@ -1,0 +1,134 @@
+{{- if .Values.nginx.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aftok.fullname" . }}-nginx
+  labels:
+    {{- include "aftok.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nginx
+spec:
+  replicas: {{ .Values.nginx.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "aftok.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: nginx
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-nginx.yaml") . | sha256sum }}
+      labels:
+        {{- include "aftok.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: nginx
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      # Init containers to populate static content
+      initContainers:
+        - name: copy-client-assets
+          image: "{{ if .Values.aftokClient.image.registry }}{{ .Values.aftokClient.image.registry }}/{{ end }}{{ .Values.aftokClient.image.repository }}:{{ .Values.aftokClient.image.tag }}"
+          imagePullPolicy: {{ .Values.aftokClient.image.pullPolicy }}
+          command: ['sh', '-c']
+          args:
+            - |
+              echo "Copying client assets..."
+              cp -r /app/dist/* /shared/app/
+              echo "Client assets copied successfully"
+          volumeMounts:
+            - name: shared-app
+              mountPath: /shared/app
+          securityContext:
+            runAsUser: 0  # Need root to copy files
+
+        - name: copy-site-assets
+          image: "{{ if .Values.aftokSite.image.registry }}{{ .Values.aftokSite.image.registry }}/{{ end }}{{ .Values.aftokSite.image.repository }}:{{ .Values.aftokSite.image.tag }}"
+          imagePullPolicy: {{ .Values.aftokSite.image.pullPolicy }}
+          command: ['sh', '-c']
+          args:
+            - |
+              echo "Copying site assets..."
+              cp -r /site/dist/* /shared/site/
+              echo "Site assets copied successfully"
+          volumeMounts:
+            - name: shared-site
+              mountPath: /shared/site
+          securityContext:
+            runAsUser: 0  # Need root to copy files
+
+      containers:
+        - name: nginx
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ if .Values.nginx.image.registry }}{{ .Values.nginx.image.registry }}/{{ end }}{{ .Values.nginx.image.repository }}:{{ .Values.nginx.image.tag }}"
+          imagePullPolicy: {{ .Values.nginx.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            {{- if .Values.nginx.tls.enabled }}
+            - name: https
+              containerPort: 443
+              protocol: TCP
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.nginx.resources | nindent 12 }}
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            - name: shared-site
+              mountPath: /opt/static/site
+              readOnly: true
+            - name: shared-app
+              mountPath: /opt/static/app
+              readOnly: true
+            {{- if .Values.nginx.tls.enabled }}
+            - name: tls-certs
+              mountPath: /etc/nginx/ssl
+              readOnly: true
+            {{- end }}
+
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: {{ include "aftok.fullname" . }}-nginx-config
+        - name: shared-site
+          emptyDir: {}
+        - name: shared-app
+          emptyDir: {}
+        {{- if .Values.nginx.tls.enabled }}
+        - name: tls-certs
+          secret:
+            secretName: {{ .Values.nginx.tls.secretName }}
+        {{- end }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

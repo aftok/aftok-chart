@@ -1,0 +1,137 @@
+# Example values file for deploying Aftok
+#
+# Copy this file and customize it for your environment.
+# Deploy with: helm upgrade --install my-aftok ./aftok --values my-values.yaml
+
+# Aftok Server configuration
+aftokServer:
+  enabled: true
+  image:
+    registry: ghcr.io
+    repository: aftok/aftok-server
+    tag: "latest"  # Use a specific version tag for production
+    pullPolicy: IfNotPresent
+
+  # Adjust resources based on your expected load
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+  replicaCount: 1
+
+  # Server configuration - customize for your environment
+  config:
+    aftokServerCfg: |
+      port = 8000
+      host = "0.0.0.0"
+
+      # Site key for session management
+      siteKey = "/etc/aftok/snap-site-key"
+
+      # Database configuration
+      db {
+        host = "my-aftok-postgresql"
+        port = 5432
+        user = "aftok"
+        pass = "your-password-here"
+        db = "aftok"
+        numStripes = 1
+        idleTime = 5
+        maxResourcesPerStripe = 20
+      }
+
+      # SMTP configuration for email
+      smtpHost = "smtp.example.com"
+      smtpPort = 587
+      smtpUser = "your-smtp-user"
+      smtpKey = "your-smtp-password"
+
+      templatePath = "/opt/aftok/server/templates/"
+
+      # Recaptcha for signup protection
+      recaptchaSecret = "your-recaptcha-secret"
+
+      # Billing configuration
+      billing {
+        bitcoin {
+          networkMode = "main"  # or "test" for testnet
+          signingKeyFile = "/etc/aftok/aftok.bip70.key.pem"
+          certsFile = "/etc/aftok/aftok.bip70-chain.cert.pem"
+          exchangeRateServiceURI = "https://blockchain.info/ticker"
+          bip70Host = "your-domain.com:8443"
+          minPayment = 10000
+        }
+        zcash {
+          minPayment = 100
+        }
+      }
+
+      zcash {
+        network = "mainnet"  # or "testnet"
+      }
+
+    aftokMigrationsCfg: |
+      DBM_DATABASE_TYPE="postgresql"
+      DBM_DATABASE="host=my-aftok-postgresql user=aftok password=your-password-here dbname=aftok"
+      DBM_MIGRATION_STORE="./migrations"
+      DBM_TIMESTAMP_FILENAMES=on
+
+# Aftok Client (PureScript frontend)
+aftokClient:
+  image:
+    registry: ghcr.io
+    repository: aftok/aftok-client
+    tag: "latest"
+
+# Aftok Site (static website)
+aftokSite:
+  image:
+    registry: ghcr.io
+    repository: aftok/aftok-site
+    tag: "latest"
+
+# Nginx configuration
+nginx:
+  enabled: true
+  replicaCount: 1
+
+  service:
+    type: LoadBalancer  # or ClusterIP if using ingress
+    httpPort: 80
+
+  tls:
+    enabled: false  # Enable and configure for HTTPS
+
+# PostgreSQL - use the bundled PostgreSQL or an external database
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "your-postgres-admin-password"
+    username: "aftok"
+    password: "your-aftok-db-password"
+    database: "aftok"
+
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+
+# Ingress - enable if you prefer ingress over LoadBalancer
+ingress:
+  enabled: false
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: aftok.your-domain.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: aftok-tls
+      hosts:
+        - aftok.your-domain.com

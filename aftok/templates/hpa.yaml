@@ -1,0 +1,33 @@
+{{- if and .Values.aftokServer.enabled .Values.aftokServer.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "aftok.fullname" . }}-server
+  labels:
+    {{- include "aftok.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "aftok.fullname" . }}-server
+  minReplicas: {{ .Values.aftokServer.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.aftokServer.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.aftokServer.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.aftokServer.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.aftokServer.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.aftokServer.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

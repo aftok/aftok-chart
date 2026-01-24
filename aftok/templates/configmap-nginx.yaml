@@ -1,0 +1,18 @@
+{{- if .Values.nginx.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "aftok.fullname" . }}-nginx-config
+  labels:
+    {{- include "aftok.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nginx
+data:
+  nginx.conf: |
+    {{- .Values.nginx.config.nginxConf | nindent 4 }}
+# Static files are now handled by init containers
+# The old ConfigMap approach has been replaced with:
+# 1. aftok/aftok-client image containing built PureScript app
+# 2. aftok/aftok-site image containing static website
+# 3. Init containers copy files to shared volumes
+# 4. Nginx serves from shared volumes
+{{- end }}

@@ -1,0 +1,265 @@
+# Default values for aftok
+# This is a YAML-formatted file.
+#
+# For production deployments, create your own values file that overrides
+# these defaults with your specific configuration.
+
+# Global settings
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# Aftok Server configuration
+aftokServer:
+  enabled: true
+  image:
+    registry: ghcr.io
+    repository: aftok/aftok-server
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  # Resource limits and requests
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+  # Horizontal Pod Autoscaler
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+  # Pod replica count (when autoscaling is disabled)
+  replicaCount: 1
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 8000
+    annotations: {}
+
+  # Optional: name of a secret containing additional config files
+  # (e.g., TLS certificates, signing keys)
+  secretName: ""
+
+  # Configuration files - override these in your environment-specific values
+  config:
+    aftokServerCfg: |
+      port = 8000
+      host = "0.0.0.0"
+      # Add your server configuration here
+
+    aftokMigrationsCfg: |
+      # Database migration configuration
+      # host = "aftok-postgresql"
+      # port = 5432
+      # database = "aftok"
+      # user = "aftok"
+
+  # Environment variables
+  env: []
+    # - name: LOG_LEVEL
+    #   value: "info"
+
+  # Secret environment variables
+  envSecrets: []
+    # - secretRef:
+    #     name: aftok-secrets
+
+# Aftok Client (PureScript frontend)
+aftokClient:
+  image:
+    registry: ghcr.io
+    repository: aftok/aftok-client
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+# Aftok Site (static website)
+aftokSite:
+  image:
+    registry: ghcr.io
+    repository: aftok/aftok-site
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+# Nginx reverse proxy configuration
+nginx:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: nginx
+    tag: "1.24-alpine"
+    pullPolicy: IfNotPresent
+
+  # Resource limits and requests
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  replicaCount: 1
+
+  # Service configuration
+  service:
+    type: LoadBalancer
+    httpPort: 80
+    httpsPort: 443
+    annotations: {}
+      # For AWS Load Balancer Controller:
+      # service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+      # For GCP:
+      # cloud.google.com/load-balancer-type: "External"
+
+  # Nginx configuration
+  config:
+    nginxConf: |
+      user nginx;
+      worker_processes auto;
+      error_log /var/log/nginx/error.log warn;
+      pid /var/run/nginx.pid;
+
+      events {
+          worker_connections 1024;
+      }
+
+      http {
+          include /etc/nginx/mime.types;
+          default_type application/octet-stream;
+
+          log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                          '$status $body_bytes_sent "$http_referer" '
+                          '"$http_user_agent" "$http_x_forwarded_for"';
+
+          access_log /var/log/nginx/access.log main;
+
+          sendfile on;
+          tcp_nopush on;
+          tcp_nodelay on;
+          keepalive_timeout 65;
+          types_hash_max_size 2048;
+
+          upstream aftok_backend {
+              server aftok-server:8000;
+          }
+
+          server {
+              listen 80;
+              server_name _;
+
+              # API routes
+              location /api/ {
+                  proxy_pass http://aftok_backend;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+
+              # Static files for the app
+              location /app/ {
+                  alias /opt/static/app/;
+                  try_files $uri $uri/ /app/index.html;
+              }
+
+              # Static website files
+              location / {
+                  root /opt/static/site;
+                  try_files $uri $uri/ /index.html;
+              }
+          }
+      }
+
+  # TLS/SSL configuration
+  tls:
+    enabled: false
+    secretName: aftok-tls
+    # If you have cert-manager:
+    certManager:
+      enabled: false
+      issuer: letsencrypt-prod
+
+# PostgreSQL database configuration
+postgresql:
+  enabled: true
+  auth:
+    enablePostgresUser: true
+    postgresPassword: ""  # Set in your environment values or use existingSecret
+    username: "aftok"
+    password: ""          # Set in your environment values or use existingSecret
+    database: "aftok"
+    existingSecret: ""    # Name of existing secret with passwords
+
+  # For production, use these settings:
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClass: "" # Use default storage class
+
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+
+  # Backup configuration
+  backup:
+    enabled: false
+    # Configure backup to cloud storage here
+
+# Ingress configuration (alternative to LoadBalancer)
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: aftok.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+    # - secretName: aftok-tls
+    #   hosts:
+    #     - aftok.example.com
+
+# ServiceMonitor for Prometheus (if using)
+serviceMonitor:
+  enabled: false
+  namespace: ""
+  interval: 30s
+  path: /metrics
+
+# Pod Security Context
+podSecurityContext:
+  fsGroup: 1000
+
+# Container Security Context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Node selection
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Additional volumes and volume mounts
+extraVolumes: []
+extraVolumeMounts: []

@@ -1,0 +1,14 @@
+{{- if .Values.aftokServer.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "aftok.fullname" . }}-config
+  labels:
+    {{- include "aftok.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+data:
+  aftok-server.cfg: |
+    {{- .Values.aftokServer.config.aftokServerCfg | nindent 4 }}
+  aftok-migrations.cfg: |
+    {{- .Values.aftokServer.config.aftokMigrationsCfg | nindent 4 }}
+{{- end }}

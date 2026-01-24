@@ -1,0 +1,23 @@
+{{- if .Values.aftokServer.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aftok.fullname" . }}-server
+  labels:
+    {{- include "aftok.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+  {{- with .Values.aftokServer.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.aftokServer.service.type }}
+  ports:
+    - port: {{ .Values.aftokServer.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "aftok.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+{{- end }}
