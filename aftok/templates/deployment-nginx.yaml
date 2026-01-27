@@ -28,6 +28,9 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
 
       # Init containers to populate static content
+      # NOTE: The source paths below must match the Dockerfile output paths:
+      #   - Client (Dockerfile.k8s): assets at /app/dist
+      #   - Site (Dockerfile): assets at /site/dist
       initContainers:
         - name: copy-client-assets
           image: "{{ if .Values.aftokClient.image.registry }}{{ .Values.aftokClient.image.registry }}/{{ end }}{{ .Values.aftokClient.image.repository }}:{{ .Values.aftokClient.image.tag }}"
