@@ -52,6 +52,9 @@ aftokServer:
     aftokServerCfg: |
       port = 8000
       host = "0.0.0.0"
+      # reCAPTCHA configuration - set these in your environment values
+      # recaptchaSiteKey = "your-site-key"
+      # recaptchaSecret = "your-secret-key"
       # Add your server configuration here
 
     aftokMigrationsCfg: |
