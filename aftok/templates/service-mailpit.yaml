@@ -1,0 +1,23 @@
+{{- if .Values.mailpit.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aftok.fullname" . }}-mailpit
+  labels:
+    {{- include "aftok.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mailpit
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.mailpit.service.smtpPort }}
+      targetPort: smtp
+      protocol: TCP
+      name: smtp
+    - port: {{ .Values.mailpit.service.webPort }}
+      targetPort: web
+      protocol: TCP
+      name: web
+  selector:
+    {{- include "aftok.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: mailpit
+{{- end }}

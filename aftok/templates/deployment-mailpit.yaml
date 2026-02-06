@@ -1,0 +1,46 @@
+{{- if .Values.mailpit.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aftok.fullname" . }}-mailpit
+  labels:
+    {{- include "aftok.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mailpit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "aftok.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: mailpit
+  template:
+    metadata:
+      labels:
+        {{- include "aftok.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: mailpit
+    spec:
+      containers:
+        - name: mailpit
+          image: "{{ .Values.mailpit.image.repository }}:{{ .Values.mailpit.image.tag }}"
+          imagePullPolicy: {{ .Values.mailpit.image.pullPolicy }}
+          ports:
+            - name: smtp
+              containerPort: 1025
+              protocol: TCP
+            - name: web
+              containerPort: 8025
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: web
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: web
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.mailpit.resources | nindent 12 }}
+{{- end }}
