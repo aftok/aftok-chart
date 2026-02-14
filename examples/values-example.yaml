@@ -2,67 +2,118 @@
 #
 # Copy this file and customize it for your environment.
 # Deploy with: helm upgrade --install my-aftok ./aftok --values my-values.yaml
+#
+# This example assumes:
+#   - k3s single-node cluster with Traefik ingress (built-in)
+#   - cert-manager installed for TLS
+#   - Images hosted on ghcr.io (private registry)
+#   - Release name: my-aftok (service names derive from this)
+#
+# Service naming: with release name "my-aftok" and chart name "aftok",
+# the fullname becomes "my-aftok" and services are:
+#   - my-aftok-server (Haskell backend, port 8000)
+#   - my-aftok-postgresql (database, port 5432)
+#   - my-aftok-nginx (reverse proxy, port 80)
 
-# Aftok Server configuration
+# Pull images from ghcr.io (private registry)
+# Create the secret with:
+#   kubectl create secret docker-registry ghcr-credentials \
+#     --docker-server=ghcr.io --docker-username=<user> \
+#     --docker-password=<token> -n <namespace>
+global:
+  imagePullSecrets:
+    - name: ghcr-credentials
+
+# --- Aftok Server ---
 aftokServer:
   enabled: true
   image:
     registry: ghcr.io
     repository: aftok/aftok-server
     tag: "latest"  # Use a specific version tag for production
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
+
+  replicaCount: 1
+
+  autoscaling:
+    enabled: false
 
   # Adjust resources based on your expected load
   resources:
     limits:
-      cpu: 1000m
-      memory: 1Gi
+      cpu: 750m
+      memory: 768Mi
     requests:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 375m
+      memory: 384Mi
 
-  replicaCount: 1
+  # BIP-70 PEM files for payment signing, mounted from a K8s secret.
+  # Create with:
+  #   kubectl create secret generic aftok-server-secrets \
+  #     --from-file=aftok.bip70.key.pem=<path> \
+  #     --from-file=aftok.bip70-chain.cert.pem=<path> \
+  #     -n <namespace>
+  secretName: "aftok-server-secrets"
 
-  # Server configuration - customize for your environment
+  # The server has no /health endpoint - use TCP socket probes
+  livenessProbe:
+    tcpSocket:
+      port: 8000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    tcpSocket:
+      port: 8000
+    initialDelaySeconds: 5
+    periodSeconds: 5
+
+  # Server configuration
+  # IMPORTANT: Update the db.host and aftokMigrationsCfg host to match
+  # your release name (e.g., "my-aftok-postgresql" for release "my-aftok")
   config:
     aftokServerCfg: |
       port = 8000
-      host = "0.0.0.0"
+      hostname = "aftok.your-domain.com"
 
-      # Site key for session management
-      siteKey = "/etc/aftok/snap-site-key"
+      # Set to true for HTTPS deployments
+      secureCookies = true
+
+      corsAllowedOrigins = ["https://aftok.your-domain.com"]
 
       # Database configuration
       db {
         host = "my-aftok-postgresql"
         port = 5432
         user = "aftok"
-        pass = "your-password-here"
+        pass = "your-db-password"
         db = "aftok"
         numStripes = 1
         idleTime = 5
         maxResourcesPerStripe = 20
       }
 
-      # SMTP configuration for email
-      smtpHost = "smtp.example.com"
+      # SMTP configuration for transactional emails (password resets, invitations)
+      # Example uses SendGrid; adjust for your provider
+      smtpHost = "smtp.sendgrid.net"
       smtpPort = 587
-      smtpUser = "your-smtp-user"
-      smtpKey = "your-smtp-password"
+      smtpUser = "apikey"
+      smtpKey = "your-sendgrid-api-key"
 
       templatePath = "/opt/aftok/server/templates/"
 
-      # Recaptcha for signup protection
+      # Google reCAPTCHA keys for signup protection
+      # Register at: https://www.google.com/recaptcha/admin
+      recaptchaSiteKey = "your-recaptcha-site-key"
       recaptchaSecret = "your-recaptcha-secret"
 
-      # Billing configuration
+      # Billing / cryptocurrency configuration
       billing {
         bitcoin {
-          networkMode = "main"  # or "test" for testnet
+          networkMode = "live"  # "live" for mainnet, "test" for testnet
           signingKeyFile = "/etc/aftok/aftok.bip70.key.pem"
           certsFile = "/etc/aftok/aftok.bip70-chain.cert.pem"
           exchangeRateServiceURI = "https://blockchain.info/ticker"
-          bip70Host = "your-domain.com:8443"
+          bip70Host = "aftok.your-domain.com:443"
           minPayment = 10000
         }
         zcash {
@@ -71,59 +122,149 @@ aftokServer:
       }
 
       zcash {
-        network = "mainnet"  # or "testnet"
+        network = "mainnet"  # "mainnet" or "testnet"
       }
 
+    # Database migration configuration (DBM format)
+    # Used by moo-postgresql for schema migrations
     aftokMigrationsCfg: |
       DBM_DATABASE_TYPE="postgresql"
-      DBM_DATABASE="host=my-aftok-postgresql user=aftok password=your-password-here dbname=aftok"
+      DBM_DATABASE="host=my-aftok-postgresql user=aftok password=your-db-password dbname=aftok"
       DBM_MIGRATION_STORE="./migrations"
       DBM_TIMESTAMP_FILENAMES=on
 
-# Aftok Client (PureScript frontend)
+# --- Aftok Client (TS React frontend) ---
 aftokClient:
   image:
     registry: ghcr.io
     repository: aftok/aftok-client
     tag: "latest"
+    pullPolicy: Always
 
-# Aftok Site (static website)
+# --- Aftok Site (static website) ---
 aftokSite:
   image:
     registry: ghcr.io
     repository: aftok/aftok-site
     tag: "latest"
+    pullPolicy: Always
 
-# Nginx configuration
+# --- Nginx reverse proxy ---
+# Nginx serves as the internal reverse proxy. Traefik (or another ingress
+# controller) handles external traffic and TLS termination.
 nginx:
   enabled: true
   replicaCount: 1
 
+  resources:
+    limits:
+      cpu: 400m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # ClusterIP when using an ingress controller for external traffic
   service:
-    type: LoadBalancer  # or ClusterIP if using ingress
+    type: ClusterIP
     httpPort: 80
 
+  # TLS is handled by the ingress controller + cert-manager, not nginx
   tls:
-    enabled: false  # Enable and configure for HTTPS
+    enabled: false
 
-# PostgreSQL - use the bundled PostgreSQL or an external database
+  # Override the nginx config to use the correct backend service name.
+  # The upstream server name must match your release name:
+  #   "<release-name>-server:8000"
+  config:
+    nginxConf: |
+      user nginx;
+      worker_processes auto;
+      error_log /var/log/nginx/error.log warn;
+      pid /var/run/nginx.pid;
+
+      events {
+          worker_connections 1024;
+      }
+
+      http {
+          include /etc/nginx/mime.types;
+          default_type application/octet-stream;
+
+          log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                          '$status $body_bytes_sent "$http_referer" '
+                          '"$http_user_agent" "$http_x_forwarded_for"';
+
+          access_log /var/log/nginx/access.log main;
+
+          sendfile on;
+          tcp_nopush on;
+          tcp_nodelay on;
+          keepalive_timeout 65;
+          types_hash_max_size 2048;
+
+          upstream aftok_backend {
+              server my-aftok-server:8000;
+          }
+
+          server {
+              listen 80;
+              server_name _;
+
+              # API routes - no trailing slash preserves /api prefix
+              location /api/ {
+                  proxy_pass http://aftok_backend;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+
+              # Static files for the app
+              location /app/ {
+                  alias /opt/static/app/;
+                  try_files $uri $uri/ /app/index.html;
+              }
+
+              # Static website files
+              location / {
+                  root /opt/static/site;
+                  try_files $uri $uri/ /index.html;
+              }
+          }
+      }
+
+# --- PostgreSQL ---
 postgresql:
   enabled: true
+  image:
+    tag: "latest"  # Pin to a specific version for reproducibility
   auth:
     postgresPassword: "your-postgres-admin-password"
     username: "aftok"
-    password: "your-aftok-db-password"
+    password: "your-db-password"
     database: "aftok"
 
   primary:
     persistence:
       enabled: true
       size: 20Gi
+      storageClass: "local-path"  # k3s default; adjust for your cluster
 
-# Ingress - enable if you prefer ingress over LoadBalancer
+    resources:
+      limits:
+        cpu: 750m
+        memory: 768Mi
+      requests:
+        cpu: 375m
+        memory: 384Mi
+
+# --- Ingress ---
+# This example uses Traefik (k3s built-in). For nginx ingress controller,
+# change className to "nginx" and adjust annotations accordingly.
 ingress:
-  enabled: false
-  className: nginx
+  enabled: true
+  className: traefik
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
@@ -135,3 +276,27 @@ ingress:
     - secretName: aftok-tls
       hosts:
         - aftok.your-domain.com
+
+# --- Security contexts ---
+# Nginx requires root for port 80 binding and init containers need
+# root to copy static assets. Adjust if using nginx-unprivileged.
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+    add:
+    - CHOWN
+    - SETGID
+    - SETUID
+  readOnlyRootFilesystem: false
+  runAsNonRoot: false
+  runAsUser: 0
+
+# --- Mailpit (development email capture) ---
+# Enable only in development to capture emails in a web UI
+mailpit:
+  enabled: false
