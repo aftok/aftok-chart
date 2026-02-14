@@ -391,10 +391,95 @@ let
     ${pkgs.docker}/bin/docker images | grep aftok
   '';
 
+  # Local development deploy command. Uses sensible defaults so no private
+  # values file is needed - just run `deploy-dev` from the chart directory.
+  deploy-dev = pkgs.writeShellScriptBin "deploy-dev" ''
+    set -e
+    echo "Deploying Aftok to local development environment..."
+
+    ${checkChart}
+
+    # Start minikube if not running
+    if ! ${pkgs.minikube}/bin/minikube status | grep -q "Running"; then
+      echo "Starting minikube..."
+      ${pkgs.minikube}/bin/minikube start --driver=docker --cpus=4 --memory=8192
+      ${pkgs.minikube}/bin/minikube addons enable ingress
+    fi
+
+    ${setupHelmRepos}
+    ${buildChartDeps}
+
+    # Write a temporary values file with local dev configuration
+    VALUES_FILE=$(mktemp /tmp/aftok-dev-values.XXXXXX.yaml)
+    trap "rm -f $VALUES_FILE" EXIT
+
+    cat > "$VALUES_FILE" <<'YAML'
+    aftokServer:
+      image:
+        pullPolicy: Never
+      config:
+        aftokServerCfg: |
+          port = 8000
+          hostname = "aftok.local"
+          secureCookies = false
+          corsAllowedOrigins = ["http://aftok.local"]
+          db {
+            host = "aftok-dev-postgresql"
+            port = 5432
+            user = "aftok"
+            pass = "aftok-dev"
+            db = "aftok"
+            numStripes = 1
+            idleTime = 5
+            maxResourcesPerStripe = 20
+          }
+          templatePath = "/opt/aftok/server/templates/"
+
+    aftokClient:
+      image:
+        pullPolicy: Never
+
+    aftokSite:
+      image:
+        pullPolicy: Never
+
+    postgresql:
+      auth:
+        postgresPassword: "aftok-dev"
+        password: "aftok-dev"
+
+    nginx:
+      service:
+        type: NodePort
+        httpPort: 80
+        nodePort: 30080
+
+    mailpit:
+      enabled: true
+    YAML
+
+    ${pkgs.kubernetes-helm}/bin/helm upgrade --install aftok-dev ${chartPath} \
+      --namespace aftok-dev \
+      --create-namespace \
+      --values "$VALUES_FILE" \
+      --wait
+
+    echo ""
+    echo "Development deployment complete!"
+    echo "Checking status..."
+    ${pkgs.kubectl}/bin/kubectl get pods -n aftok-dev
+    echo ""
+    echo "Access the application at: http://aftok.local"
+    echo "  (Ensure /etc/hosts is configured - run setup-local-cluster for instructions)"
+    echo ""
+    echo "Direct NodePort URL: http://$(${pkgs.minikube}/bin/minikube ip):30080"
+  '';
+
   # All generic scripts as a list, for easy inclusion in dev shells
   genericScripts = [
     setup-local-cluster
     cleanup-dev
+    deploy-dev
     rebuild-server
     rebuild-client
     rebuild-client-ts
@@ -449,6 +534,7 @@ let
     echo ""
     echo "Custom commands:"
     echo "  setup-local-cluster  - Set up minikube with addons"
+    echo "  deploy-dev          - Deploy to local minikube with dev defaults"
     echo "  build-chart         - Build Helm chart dependencies"
     echo "  build-images        - Build all Docker images (server, client, site)"
     echo "  cleanup-dev         - Clean up development deployment"
@@ -519,6 +605,7 @@ in
     # Standalone generic scripts
     setup-local-cluster
     cleanup-dev
+    deploy-dev
     rebuild-server
     rebuild-client
     rebuild-client-ts
