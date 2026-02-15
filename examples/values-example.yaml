@@ -68,8 +68,8 @@ aftokServer:
     periodSeconds: 5
 
   # Server configuration
-  # IMPORTANT: Update the db.host and aftokMigrationsCfg host to match
-  # your release name (e.g., "my-aftok-postgresql" for release "my-aftok")
+  # IMPORTANT: Update the db.host to match your release name
+  # (e.g., "my-aftok-postgresql" for release "my-aftok")
   config:
     aftokServerCfg: |
       port = 8000
@@ -125,13 +125,6 @@ aftokServer:
         network = "mainnet"  # "mainnet" or "testnet"
       }
 
-    # Database migration configuration (DBM format)
-    # Used by moo-postgresql for schema migrations
-    aftokMigrationsCfg: |
-      DBM_DATABASE_TYPE="postgresql"
-      DBM_DATABASE="host=my-aftok-postgresql user=aftok password=your-db-password dbname=aftok"
-      DBM_MIGRATION_STORE="./migrations"
-      DBM_TIMESTAMP_FILENAMES=on
 
 # --- Aftok Client (TS React frontend) ---
 aftokClient:

@@ -58,13 +58,6 @@ aftokServer:
       # recaptchaSecret = "your-secret-key"
       # Add your server configuration here
 
-    aftokMigrationsCfg: |
-      # Database migration configuration
-      # host = "aftok-postgresql"
-      # port = 5432
-      # database = "aftok"
-      # user = "aftok"
-
   # Environment variables
   env: []
     # - name: LOG_LEVEL

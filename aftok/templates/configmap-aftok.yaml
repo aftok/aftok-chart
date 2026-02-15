@@ -9,6 +9,4 @@ metadata:
 data:
   aftok-server.cfg: |
     {{- .Values.aftokServer.config.aftokServerCfg | nindent 4 }}
-  aftok-migrations.cfg: |
-    {{- .Values.aftokServer.config.aftokMigrationsCfg | nindent 4 }}
 {{- end }}

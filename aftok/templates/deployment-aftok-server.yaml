@@ -87,8 +87,6 @@ spec:
                   items:
                     - key: aftok-server.cfg
                       path: aftok-server.cfg
-                    - key: aftok-migrations.cfg
-                      path: aftok-migrations.cfg
               {{- if .Values.aftokServer.secretName }}
               - secret:
                   name: {{ .Values.aftokServer.secretName }}
