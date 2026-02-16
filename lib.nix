@@ -233,13 +233,6 @@ let
 
   rebuild-client = mkDockerRebuildScript {
     name = "client";
-    defaultPath = "../client/work";
-    imageName = "aftok/aftok-client:latest";
-    dockerfile = "Dockerfile.k8s";
-  };
-
-  rebuild-client-ts = mkDockerRebuildScript {
-    name = "client-ts";
     defaultPath = "../client/ts";
     imageName = "aftok/aftok-client:latest";
     dockerfile = "Dockerfile.k8s";
@@ -482,7 +475,6 @@ let
     deploy-dev
     rebuild-server
     rebuild-client
-    rebuild-client-ts
     rebuild-site
     rebuild-all
     backup-db
@@ -545,7 +537,6 @@ let
     echo "Development rebuild commands (stages changes, builds, loads, restarts):"
     echo "  rebuild-server [path] [ns]  - Rebuild server (default: ../server/canon, aftok-dev)"
     echo "  rebuild-client [path] [ns]  - Rebuild client (default: ../client/work, aftok-dev)"
-    echo "  rebuild-client-ts [path] [ns] - Rebuild TS client (default: ../client/ts, aftok-dev)"
     echo "  rebuild-site [path] [ns]    - Rebuild site (default: ../aftok.com/work, aftok-dev)"
     echo "  rebuild-all [ns]            - Rebuild all components (uses default paths)"
     echo ""
@@ -608,7 +599,6 @@ in
     deploy-dev
     rebuild-server
     rebuild-client
-    rebuild-client-ts
     rebuild-site
     rebuild-all
     backup-db
