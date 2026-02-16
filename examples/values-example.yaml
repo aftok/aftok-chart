@@ -125,6 +125,20 @@ aftokServer:
         network = "mainnet"  # "mainnet" or "testnet"
       }
 
+      # External port for constructing callback URLs (e.g. OAuth redirects).
+      # Only needed when the externally-visible port differs from the server
+      # bind port (e.g. NodePort in development, or a non-standard proxy port).
+      # Omit for standard ports (80/443).
+      # externalPort = 30080
+
+      # GitHub OAuth configuration for verified account linking.
+      # Register an OAuth App at: GitHub Settings > Developer settings > OAuth Apps
+      # Set the redirect URI to: https://aftok.your-domain.com/api/user/github/callback
+      # github {
+      #   oauthClientId = "Iv1.xxxxxxxxxxxx"
+      #   oauthClientSecret = "secret_xxxxxxxxxxxx"
+      # }
+
 
 # --- Aftok Client (TS React frontend) ---
 aftokClient:
