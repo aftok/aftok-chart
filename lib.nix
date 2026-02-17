@@ -240,28 +240,9 @@ let
 
   rebuild-site = mkDockerRebuildScript {
     name = "site";
-    defaultPath = "../aftok.com/work";
+    defaultPath = "../aftok.com/canon";
     imageName = "aftok/aftok-site:latest";
   };
-
-  rebuild-all = pkgs.writeShellScriptBin "rebuild-all" ''
-    set -e
-    NAMESPACE=''${1:-aftok-dev}
-
-    echo "Rebuilding and redeploying all components to $NAMESPACE..."
-    echo ""
-
-    rebuild-server ../server/canon "$NAMESPACE"
-    echo ""
-    rebuild-client ../client/work "$NAMESPACE"
-    echo ""
-    rebuild-site ../aftok.com/work "$NAMESPACE"
-
-    echo ""
-    echo "All components rebuilt and redeployed!"
-    echo ""
-    ${pkgs.kubectl}/bin/kubectl get pods -n "$NAMESPACE"
-  '';
 
   backup-db = pkgs.writeShellScriptBin "backup-db" ''
     set -e
@@ -347,141 +328,17 @@ let
     echo "Dependencies are now available in ${chartPath}/charts/"
   '';
 
-  build-images = pkgs.writeShellScriptBin "build-images" ''
-    set -e
-    echo "Building all Aftok Docker images..."
-
-    # Check if we're in the right directory structure
-    if [ ! -d "../server/work" ] || [ ! -d "../client/work" ] || [ ! -d "../aftok.com/work" ]; then
-      echo "Error: Please run this command from the helm/ directory"
-      echo "Expected directory structure: aftok/helm/, aftok/server/work/, aftok/client/work, aftok/aftok.com/work"
-      exit 1
-    fi
-
-    # Build server image with Nix
-    echo "Building Aftok server..."
-    cd ../server/work
-    nix build
-    ${pkgs.docker}/bin/docker load < result
-    cd ../../helm
-
-    # Build client image
-    echo "Building Aftok client..."
-    cd ../client/work
-    # Initialize submodules if needed
-    git submodule update --init --recursive
-    ${pkgs.docker}/bin/docker build -t aftok/aftok-client:latest -f Dockerfile.k8s .
-    cd ../../helm
-
-    # Build site image
-    echo "Building Aftok site..."
-    cd ../aftok.com/work
-    ${pkgs.docker}/bin/docker build -t aftok/aftok-site:latest .
-    cd ../../helm
-
-    echo "All images built successfully!"
-    echo "Available images:"
-    ${pkgs.docker}/bin/docker images | grep aftok
-  '';
-
-  # Local development deploy command. Uses sensible defaults so no private
-  # values file is needed - just run `deploy-dev` from the chart directory.
-  deploy-dev = pkgs.writeShellScriptBin "deploy-dev" ''
-    set -e
-    echo "Deploying Aftok to local development environment..."
-
-    ${checkChart}
-
-    # Start minikube if not running
-    if ! ${pkgs.minikube}/bin/minikube status | grep -q "Running"; then
-      echo "Starting minikube..."
-      ${pkgs.minikube}/bin/minikube start --driver=docker --cpus=4 --memory=8192
-      ${pkgs.minikube}/bin/minikube addons enable ingress
-    fi
-
-    ${setupHelmRepos}
-    ${buildChartDeps}
-
-    # Write a temporary values file with local dev configuration
-    VALUES_FILE=$(mktemp /tmp/aftok-dev-values.XXXXXX.yaml)
-    trap "rm -f $VALUES_FILE" EXIT
-
-    cat > "$VALUES_FILE" <<'YAML'
-    aftokServer:
-      image:
-        pullPolicy: Never
-      config:
-        aftokServerCfg: |
-          port = 8000
-          hostname = "aftok.local"
-          secureCookies = false
-          corsAllowedOrigins = ["http://aftok.local"]
-          db {
-            host = "aftok-dev-postgresql"
-            port = 5432
-            user = "aftok"
-            pass = "aftok-dev"
-            db = "aftok"
-            numStripes = 1
-            idleTime = 5
-            maxResourcesPerStripe = 20
-          }
-          templatePath = "/opt/aftok/server/templates/"
-
-    aftokClient:
-      image:
-        pullPolicy: Never
-
-    aftokSite:
-      image:
-        pullPolicy: Never
-
-    postgresql:
-      auth:
-        postgresPassword: "aftok-dev"
-        password: "aftok-dev"
-
-    nginx:
-      service:
-        type: NodePort
-        httpPort: 80
-        nodePort: 30080
-
-    mailpit:
-      enabled: true
-    YAML
-
-    ${pkgs.kubernetes-helm}/bin/helm upgrade --install aftok-dev ${chartPath} \
-      --namespace aftok-dev \
-      --create-namespace \
-      --values "$VALUES_FILE" \
-      --wait
-
-    echo ""
-    echo "Development deployment complete!"
-    echo "Checking status..."
-    ${pkgs.kubectl}/bin/kubectl get pods -n aftok-dev
-    echo ""
-    echo "Access the application at: http://aftok.local"
-    echo "  (Ensure /etc/hosts is configured - run setup-local-cluster for instructions)"
-    echo ""
-    echo "Direct NodePort URL: http://$(${pkgs.minikube}/bin/minikube ip):30080"
-  '';
-
   # All generic scripts as a list, for easy inclusion in dev shells
   genericScripts = [
     setup-local-cluster
     cleanup-dev
-    deploy-dev
     rebuild-server
     rebuild-client
     rebuild-site
-    rebuild-all
     backup-db
     restore-db
     show-logs
     build-chart
-    build-images
   ];
 
   # Package dependencies for k8s development
@@ -526,9 +383,7 @@ let
     echo ""
     echo "Custom commands:"
     echo "  setup-local-cluster  - Set up minikube with addons"
-    echo "  deploy-dev          - Deploy to local minikube with dev defaults"
     echo "  build-chart         - Build Helm chart dependencies"
-    echo "  build-images        - Build all Docker images (server, client, site)"
     echo "  cleanup-dev         - Clean up development deployment"
     echo "  backup-db           - Backup database"
     echo "  restore-db          - Restore database from backup"
@@ -536,9 +391,8 @@ let
     echo ""
     echo "Development rebuild commands (stages changes, builds, loads, restarts):"
     echo "  rebuild-server [path] [ns]  - Rebuild server (default: ../server/canon, aftok-dev)"
-    echo "  rebuild-client [path] [ns]  - Rebuild client (default: ../client/work, aftok-dev)"
-    echo "  rebuild-site [path] [ns]    - Rebuild site (default: ../aftok.com/work, aftok-dev)"
-    echo "  rebuild-all [ns]            - Rebuild all components (uses default paths)"
+    echo "  rebuild-client [path] [ns]  - Rebuild client (default: ../client/ts, aftok-dev)"
+    echo "  rebuild-site [path] [ns]    - Rebuild site (default: ../aftok.com/canon, aftok-dev)"
     echo ""
     echo "Cloud CLIs (for manual cloud deployments):"
     echo "  gcloud        - Google Cloud (for GKE)"
@@ -596,16 +450,13 @@ in
     # Standalone generic scripts
     setup-local-cluster
     cleanup-dev
-    deploy-dev
     rebuild-server
     rebuild-client
     rebuild-site
-    rebuild-all
     backup-db
     restore-db
     show-logs
     build-chart
-    build-images
 
     # Aggregated list of all generic scripts
     genericScripts
