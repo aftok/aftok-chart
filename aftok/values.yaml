@@ -13,7 +13,7 @@ global:
 aftokServer:
   enabled: true
   image:
-    registry: ghcr.io
+    registry: ""
     repository: aftok/aftok-server
     tag: "latest"
     pullPolicy: IfNotPresent
@@ -71,7 +71,7 @@ aftokServer:
 # Aftok Client (PureScript frontend)
 aftokClient:
   image:
-    registry: ghcr.io
+    registry: ""
     repository: aftok/aftok-client
     tag: "latest"
     pullPolicy: IfNotPresent
@@ -79,7 +79,7 @@ aftokClient:
 # Aftok Site (static website)
 aftokSite:
   image:
-    registry: ghcr.io
+    registry: ""
     repository: aftok/aftok-site
     tag: "latest"
     pullPolicy: IfNotPresent
@@ -198,7 +198,7 @@ postgresql:
   primary:
     persistence:
       enabled: true
-      size: 20Gi
+      size: 8Gi
       storageClass: "" # Use default storage class
 
     resources:
