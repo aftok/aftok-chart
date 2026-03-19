@@ -35,7 +35,13 @@ let
   }:
     pkgs.writeShellScriptBin "deploy-${name}" ''
       set -e
+      if [ -z "''${1:-}" ]; then
+        echo "Usage: deploy-${name} <kubeconfig>"
+        exit 1
+      fi
+      export KUBECONFIG="$1"
       echo "Deploying Aftok to ${name} environment..."
+      echo "Kubeconfig: $KUBECONFIG"
 
       ${checkChart}
 
