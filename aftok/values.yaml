@@ -166,6 +166,20 @@ nginx:
                   try_files $uri $uri/ /app/index.html;
               }
 
+              # Redirects for legacy URLs from the pre-Astro site
+              # Old: /guide-<slug>.html  New: /guides/<slug>/
+              location ~ ^/guide-(.+)\.html$ { return 301 /guides/$1/; }
+              # Old: /docs/<slug>.html   New: /docs/<slug>/
+              location ~ ^/docs/(.+)\.html$ { return 301 /docs/$1/; }
+              # Old auth pages now live in the SPA at /app/<route>
+              location = /signin.html         { return 301 /app/login; }
+              location = /signup.html         { return 301 /app/signup; }
+              location = /password-reset.html { return 301 /app/password-reset; }
+              location = /error.html          { return 301 /; }
+              # Old top-level pages: /<name>.html → /<name>/
+              location ~ ^/(contact|faq|pricing|team|join-us)\.html$ { return 301 /$1/; }
+              location = /index.html          { return 301 /; }
+
               # Static website files
               location / {
                   root /opt/static/site;
