@@ -170,7 +170,10 @@ nginx:
               # Old: /guide-<slug>.html  New: /guides/<slug>/
               location ~ ^/guide-(.+)\.html$ { return 301 /guides/$1/; }
               # Old: /docs/<slug>.html   New: /docs/<slug>/
-              location ~ ^/docs/(.+)\.html$ { return 301 /docs/$1/; }
+              # Explicit allow-list — a broad `^/docs/(.+)\.html$` matches
+              # nginx's internal index.html resolutions (e.g. /docs/cli-overview/index.html
+              # → 301 /docs/cli-overview/index/), breaking every doc page.
+              location ~ ^/docs/(api|cli-overview|cli-projects|cli-worklog|zcash)\.html$ { return 301 /docs/$1/; }
               # Old auth pages now live in the SPA at /app/<route>
               location = /signin.html         { return 301 /app/login; }
               location = /signup.html         { return 301 /app/signup; }
