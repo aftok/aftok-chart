@@ -178,7 +178,9 @@ nginx:
               location = /error.html          { return 301 /; }
               # Old top-level pages: /<name>.html → /<name>/
               location ~ ^/(contact|faq|pricing|team|join-us)\.html$ { return 301 /$1/; }
-              location = /index.html          { return 301 /; }
+              # NOTE: do NOT add `location = /index.html { return 301 /; }` here.
+              # It conflicts with try_files's /index.html fallback in `location /`
+              # below, causing an infinite redirect loop on every request to /.
 
               # Static website files
               location / {
